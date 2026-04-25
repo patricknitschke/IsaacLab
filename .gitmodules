@@ -1,0 +1,4 @@
+[submodule "aic"]
+	path = aic
+	url = https://github.com/mariusud/intrisic-ai-challenge.git
+	branch = dev/pat
