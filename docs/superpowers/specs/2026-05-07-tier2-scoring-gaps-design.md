@@ -163,7 +163,15 @@ Terminate episode and apply large penalty when any robot link contacts an off-li
 - Cable model is exempt
 
 ### Why Previously Disabled
-Physics depenetration at reset generates transient contact forces (1–3 frames) that trigger false positives. Near-port curriculum resets place arm close to task board.
+The original implementation used `net_forces_w` which reports **ALL** contact forces on each body (including floor, self-collision, gravity). This produces non-zero values constantly, triggering false positives regardless of actual enclosure contact. Additionally, PhysX depenetration at reset generates transient forces.
+
+### Root Cause Fix: `force_matrix_w`
+The ContactSensor's `force_matrix_w` field (shape: `(N, B, M, 3)`) reports forces **only** between sensor bodies and the `filter_prim_paths_expr` targets (enclosure, task_board). This eliminates floor/self-collision/gravity noise entirely.
+
+| Field | Reports | Use |
+|-------|---------|-----|
+| `net_forces_w` | ALL contacts (floor, self, everything) | ❌ Wrong for off-limit detection |
+| `force_matrix_w` | Only robot ↔ filter targets | ✅ Correct: enclosure/board only |
 
 ### Function Signature (Reward)
 ```python
@@ -171,8 +179,12 @@ def off_limit_contact_penalty_v2(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
     force_threshold_n: float = 1.0,
-    grace_steps: int = 5,
+    grace_steps: int = 3,
     min_stage: int = 5,
+    excluded_bodies: tuple[str, ...] = (
+        "sfp_module_link", "sfp_tip_link", "cable_link",
+        "gripper_left_finger_link", "gripper_right_finger_link",
+    ),
 ) -> torch.Tensor:
 ```
 
@@ -182,27 +194,34 @@ def off_limit_contact_v2(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
     force_threshold_n: float = 1.0,
-    grace_steps: int = 5,
+    grace_steps: int = 3,
     min_stage: int = 5,
+    excluded_bodies: tuple[str, ...] = (
+        "sfp_module_link", "sfp_tip_link", "cable_link",
+        "gripper_left_finger_link", "gripper_right_finger_link",
+    ),
 ) -> torch.Tensor:
 ```
 
 ### Logic (shared between reward and DoneTerm)
-1. Read contact sensor net forces for arm links
-2. Compute `max_force_per_env = max over all monitored bodies`
-3. Check `triggered = max_force > force_threshold_n`
-4. Apply grace: `past_grace = env.episode_length_buf > grace_steps`
-5. Apply stage gate: `active = get_current_stage() >= min_stage`
-6. Return `triggered & past_grace & active`
+1. Read `contact_sensor.data.force_matrix_w` — shape `(N, B, M, 3)`, filtered pairwise forces
+2. Exclude EE-related bodies (they legitimately contact the port)
+3. Compute `max_force_per_env = max over included bodies × all filter prims`
+4. Check `triggered = max_force > force_threshold_n`
+5. Apply grace: `past_grace = env.episode_length_buf > grace_steps`
+6. Apply stage gate: `active = get_current_stage() >= min_stage`
+7. Return `triggered & past_grace & active`
 
 ### Design Choices
 | Choice | Value | Rationale |
 |--------|-------|-----------|
-| Force threshold | 1.0 N | Filters PhysX depenetration noise. Real AIC has 0 threshold but we need sim safety. |
-| Grace period | 5 steps (0.17s) | Depenetration settles in 2-3 steps; 5 gives margin |
+| Data field | `force_matrix_w` | Only reports robot↔filter_prim contacts. Eliminates floor/self/gravity noise. |
+| Force threshold | 1.0 N | Filters PhysX solver noise. Standard in IsaacLab (`illegal_contact` uses 1.0N). |
+| Grace period | 3 steps (0.1s) | Depenetration settles in 1-2 steps; 3 gives margin. Reduced from 5 since `force_matrix_w` eliminates floor contact noise. |
 | Terminal | Yes (DoneTerm) | Mirrors competition: contact invalidates trial quality |
 | Reward weight | −50.0 | One-shot terminal. Comparable to timeout_penalty (−10) but more severe. |
 | Stage gate | ≥ 5 | Don't punish early exploration |
+| Excluded bodies | gripper, cable, sfp links | These legitimately contact the port during insertion |
 
 ### Sim-to-Real Gap
 - Official: ANY geometric contact = penalty (no force check)
