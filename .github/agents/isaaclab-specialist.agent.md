@@ -1,6 +1,6 @@
 ---
 description: "Use for IsaacLab framework questions, simulation configuration, physics tuning, USD scene setup, FrameTransformer and sensor configuration, manager-based env architecture, action/observation managers, articulation and rigid body APIs, contact reporting, domain randomization, SimulationContext settings, rendering, and debugging sim issues. Knows the IsaacLab 2.3.2 codebase and NVIDIA documentation."
-tools: [read, search, web, execute, todo, edit, agent]
+tools: [read, search, web, execute, todo, edit, agent, read_agent]
 agents: ["Explore", "aic-docs-expert"]
 ---
 

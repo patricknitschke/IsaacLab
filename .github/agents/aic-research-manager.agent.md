@@ -1,6 +1,6 @@
 ---
 description: "Use as the primary interface for AIC SFP cable insertion RL development: planning reward/observation changes, delegating to specialist agents, reviewing training results, coordinating multi-step improvements, and maintaining the overall reward-observation design. Orchestrates reward-engineer, observation-engineer, geometry-engineer, aic-docs-expert, and isaaclab-specialist subagents."
-tools: [read, edit, search, web, todo, agent, execute]
+tools: [read, edit, search, web, todo, agent, execute, read_agent]
 agents: [reward-engineer, observation-engineer, geometry-engineer, Explore, Ask, Plan, aic-docs-expert, isaaclab-specialist]
 ---
 
@@ -49,7 +49,9 @@ ALWAYS get user approval between plan and execute phases.
 ## Task Context
 
 ### AIC SFP Cable Insertion Task
-A UR5e robot inserts an SFP module into an SFP port on a NIC card using IsaacLab 2.3.2 + RSL-RL (PPO). Official scoring: ≥ 20 N sustained for ≥ 1 s while geometrically aligned.
+A UR5e robot inserts an SFP module into an SFP port on a NIC card using IsaacLab 2.3.2 + RSL-RL (PPO).
+
+**Scoring** (max 100/trial, 3 trials = 300): Tier 1 validity (0–1) + Tier 2 performance (−36 to +24: smoothness 0–6, duration 0–12, efficiency 0–6, force penalty −12, off-limit contact −24) + Tier 3 insertion (−12 to +75: full=75, wrong=−12, partial=38–50, proximity=0–25). Positive T2 requires T3>0. Force penalty: >20N cumulative >1s. Off-limit: any robot↔enclosure/board contact. Full insertion verified by back-wall contact sensor.
 
 ### Key Files
 | What | Path |

@@ -1,6 +1,6 @@
 ---
 description: "Use for 3D geometry and orientation engineering on the AIC SFP cable insertion task: quaternion math, rotation representations, angular distance metrics, smooth orientation fields, frame transforms, axis alignment calculations, look-at vectors, cone constraints, geodesic interpolation, designing geometric reward fields before they get baked into reward functions, and understanding USD asset geometry (coordinate frames, origins, sizes, prim structure). Discussion partner for spatial reasoning problems."
-tools: [read, search, web, execute, edit, todo, agent]
+tools: [read, search, web, execute, edit, todo, agent, read_agent]
 agents: ["Explore", "aic-docs-expert"]
 ---
 

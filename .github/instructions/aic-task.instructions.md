@@ -6,9 +6,12 @@ applyTo: "aic/**"
 
 ## Project Overview
 
-The AIC task trains a UR5e robot arm to insert an SFP (Small Form-factor Pluggable) fiber optical cable into an LC port on a NIC card. The environment is built on **IsaacLab 2.3.0** (Isaac Sim) and uses **RSL-RL** (PPO) for training.
+The AIC task trains a UR5e robot arm to insert an SFP (Small Form-factor Pluggable) fiber optical cable into an SFP port on a NIC card. The environment is built on **IsaacLab 2.3.2** (Isaac Sim) and uses **RSL-RL** (PPO) for training.
 
-**Official insertion criterion**: cable must exert ≥ 20 N on the port for ≥ 1 consecutive second while geometrically aligned.
+**Official scoring** (max 100 pts/trial, 3 trials = max 300):
+- **Tier 1** (0–1): Model validity (policy loads and responds)
+- **Tier 2** (−36 to +24): Smoothness (0–6, jerk < 50 m/s³), Duration (0–12, ≤5s→12, ≥60s→0), Efficiency (0–6, path length), Force penalty (−12 if >20N for >1s cumulative), Off-limit contact (−24 if any robot↔enclosure/board contact). Positive T2 scores require T3 > 0.
+- **Tier 3** (−12 to +75): Full insertion = +75 (contact sensor at port back wall), Wrong port = −12, Partial = 38–50 (depth-proportional, 5mm XY tolerance), Proximity = 0–25
 
 ## Key Paths
 
@@ -56,11 +59,12 @@ Identity quaternion in this frame = perfectly aligned for insertion.
 
 Rewards follow a staged curriculum (see papers: FORGE, IndustReal):
 
-1. **Approach**: L2 distance penalty (`approach_l2_penalty`) + dual-logistic proximity (`approach_dual_proximity`, coarse @ 10 cm, fine @ 1 cm) + lateral centering (`lateral_centering`) + axial advance (`axial_advance`) + aim-at-port (`aim_at_port`)
-2. **Alignment**: 3-tier orientation (always-on coarse `orient_coarse` → proximity-gated fine `orient_fine_gated` → roll `orient_roll`)
-3. **Insertion**: Dense depth-progress `insertion_depth` + sparse insertion bonus `insertion_bonus` (geometric gates) + card-face retreat `card_face_retreat`
-4. **Scoring**: AIC official criterion `aic_score` (force + hold time + alignment gates)
-5. **Regularisation**: `action_rate`, `near_port_action_rate`, `near_port_ee_velocity`, `wrist_deviation`, `contact_force`, `misaligned_contact`, `joint_torques`
+1. **Approach**: L2 distance penalty (`approach_l2_penalty`) + dual-logistic proximity (`approach_dual_proximity`, coarse @ 10 cm, fine @ 1 cm) + lateral centering (`lateral_centering`) + forward action shaping (`forward_insertion`)
+2. **Alignment**: 2-tier orientation (always-on coarse `orient_coarse` → proximity-gated fine `orient_fine_gated`) + 4-corner keypoint matching (`keypoint_alignment`) + YZ centering bonus (`yz_centering_bonus`)
+3. **Insertion**: Dense depth-progress `insertion_depth` + sparse insertion bonus `insertion_bonus` (geometric gates) + card-face penalty `card_face_penalty`
+4. **Scoring**: AIC official criterion `aic_score` (geometry-only: depth ≥ 20mm, YZ < 5mm, orient < 15°, roll < 20°, held 1s) + completion time bonus
+5. **Safety**: Off-limit contact termination + penalty (−50, force_matrix_w, curriculum-gated), sustained force penalty (20N × 1s), misaligned contact penalty
+6. **Regularisation**: `action_rate`, `near_port_action_rate`, `ee_jerk_penalty`, `near_port_ee_velocity`, `wrist_deviation`, `contact_force`, `joint_torques`
 
 When adding or modifying rewards:
 - Use `frame_cfg: SceneEntityCfg(SFP_PORT_FRAME)` to reference the port frame — never hardcode world-space targets.
@@ -78,10 +82,10 @@ When adding or modifying rewards:
 
 | Group | Dims | Noise | Usage |
 |-------|------|-------|-------|
-| **Policy** | 52 | Mild additive uniform | Actor (deployed) |
-| **Critic** | 52 | None (privileged) | Asymmetric critic (sim only) |
+| **Policy** | 37 | Additive uniform (defined but `enable_corruption=False`) | Actor (deployed) |
+| **Critic** | 37 | None (privileged) | Asymmetric critic (sim only) |
 
-Components: joint_pos_rel (6), cable_pos_in_port (3), cable_quat_in_port (4), ee_wrench (6×5=30 with history), cable_vel_in_port (3), last_action (6).
+Components: joint_pos_rel (6), cable_pos_in_port (3), cable_quat_in_port (4), ee_wrench (6), force_mean (3), force_deriv (3), force_impulse (3), cable_vel_in_port (3), last_action (6).
 
 ## Domain Randomisation
 
@@ -90,3 +94,10 @@ Applied on `mode="reset"`:
 - Robot base pose (±0.2 m XY)
 - Dome light intensity (1500–3500) and color
 - Task board position (±5 mm) and parts (SC ports ±20 mm, NIC card snap-step)
+- Near-port curriculum: 50% resets use mined states + ±0.02 rad noise
+
+**AIC Eval Randomization** (official):
+- NIC card rail: 5 slots, translation [−21.5, +23.4] mm, yaw ±10°
+- SC port rail: translation [−60, +55] mm
+- Task board: position + yaw (ranges undisclosed)
+- Grasp perturbation: ±2 mm linear, ±0.04 rad angular

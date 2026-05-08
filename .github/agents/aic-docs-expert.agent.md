@@ -106,25 +106,44 @@ All files in `aic/docs/`:
 
 ### Tier 2: Performance & Convergence (−36 to +24 pts)
 All positive Tier 2 scores require Tier 3 > 0 (plug at least in proximity to port).
+**Penalties (force, contacts) are always applied regardless of Tier 3.**
 
-| Metric | Range | Thresholds |
-|--------|-------|------------|
-| Trajectory smoothness | 0–6 | Jerk = 0 m/s³ → 6 pts; Jerk ≥ 50 m/s³ → 0 pts; linear interp |
-| Task duration | 0–12 | ≤ 5 s → 12 pts; ≥ 60 s → 0 pts; linear interp |
-| Trajectory efficiency | 0–6 | Path ≤ initial plug-port distance → 6 pts; Path ≥ 1 m + initial distance → 0 pts; linear interp |
-| Insertion force penalty | 0 to −12 | Force > 20 N sustained > 1 s → −12 pts |
-| Off-limit contact penalty | 0 to −24 | Any robot link contact with enclosure/walls/task board → −24 pts |
+| Metric | Range | Thresholds | Source |
+|--------|-------|------------|--------|
+| Trajectory smoothness | 0–6 | Jerk = 0 m/s³ → 6 pts; Jerk ≥ 50 m/s³ → 0 pts; linear interp. Savitzky-Golay 15-sample window on TCP velocity. Only while speed > 0.01 m/s. Time-weighted avg. | `ScoringTier2.cc:547-651` |
+| Task duration | 0–12 | ≤ 5 s → 12 pts; ≥ 60 s → 0 pts; formula: `(60-t)/55 × 12` | `ScoringTier2.cc:945-948` |
+| Trajectory efficiency | 0–6 | Path ≤ initial plug-port distance → 6 pts; Path ≥ 1 m + initial distance → 0 pts; linear interp. Cumulative TCP Euclidean distance. | `ScoringTier2.cc:681-683` |
+| Insertion force penalty | 0 to −12 | `√(fx²+fy²+fz²) > 20N` for cumulative time > 1 s → −12 pts. Tared F/T. **Always applied.** | `ScoringTier2.cc:879-881` |
+| Off-limit contact penalty | 0 to −24 | Any robot link contact with enclosure/walls/task board → −24 pts. Cable exempt. **Always applied.** | `ScoringTier2.cc:925-926` |
 
 ### Tier 3: Task Success (−12 to +75 pts)
 
-| Outcome | Score |
-|---------|-------|
-| Correct port insertion (contact-sensor verified) | 75 |
-| Wrong port insertion | −12 |
-| Partial insertion (plug inside port bounding box, ≤5 mm x-y tolerance) | 38–50 (proportional to depth) |
-| Proximity (plug outside port but within max acceptable distance) | 0–25 (inversely proportional to distance) |
+| Outcome | Score | Details |
+|---------|-------|---------|
+| Correct port insertion (contact-sensor verified) | 75 | Via `/scoring/insertion_event` topic; namespace parsed for correct port match |
+| Wrong port insertion | −12 | Contact sensor fires but namespace doesn't match target |
+| Partial insertion (plug inside port bounding box, ≤5 mm x-y tolerance) | 38–50 (proportional to depth) | Port entrance → 38, port bottom → 50. Requires plug below entrance Z. |
+| Proximity (plug outside port but within max acceptable distance) | 0–25 (inversely proportional to distance) | Inner radius = port entrance↔bottom distance; outer = inner + 0.5 × initial plug-port distance |
 
 ### Total: `Tier 1 + Tier 2 + Tier 3` → max 100 per trial
+
+### Controller Constraints (evaluation-fixed)
+| Limit | Value | Source |
+|-------|-------|--------|
+| Translational velocity | ±0.25 m/s per axis | `aic_ros2_controllers.yaml` |
+| Rotational velocity | ±2.0 rad/s | `aic_ros2_controllers.yaml` |
+| Feedforward wrench | Force ±40N, Torque ±5Nm | `aic_ros2_controllers.yaml` |
+| Max impedance wrench | ±10N / ±10Nm | `aic_ros2_controllers.yaml` |
+| Default stiffness (Cartesian) | [75, 75, 75, 75, 75, 75] | `aic_ros2_controllers.yaml` |
+| Default damping (Cartesian) | [35, 35, 35, 35, 35, 35] | `aic_ros2_controllers.yaml` |
+| Tracking error timeout | 2.0s (resets target on persistent error) | `aic_ros2_controllers.yaml` |
+
+### Evaluation Protocol
+- **3 trials** per submission (2× SFP + 1× SC). 180s time limit.
+- **F/T tare service NOT available** at eval — system auto-tares before cable spawn.
+- **Ground truth `/tf` blocked** at eval.
+- Robot starts with plug grasped, a few cm from target port.
+- Grasp perturbation: ±2mm, ±0.04 rad.
 
 ### Off-limit contact entities
 | Model | Includes |
