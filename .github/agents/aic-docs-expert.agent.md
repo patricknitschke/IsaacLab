@@ -145,6 +145,38 @@ All positive Tier 2 scores require Tier 3 > 0 (plug at least in proximity to por
 - Robot starts with plug grasped, a few cm from target port.
 - Grasp perturbation: ±2mm, ±0.04 rad.
 
+### Sample Qualification Trials (`aic_engine/config/sample_config.yaml`)
+
+**Trial 1 — SFP insertion**
+- Board pose: x=0.15, y=−0.2, z=1.14, yaw=π
+- NIC card on `nic_rail_0`, translation=0.036m, yaw=0°
+- SC port on `sc_rail_0`, translation=0.042m, yaw=0.1 rad
+- Cable: `sfp_sc_cable`, gripper offset z=0.04245
+- Task: SFP tip → `sfp_port_0` on `nic_card_mount_0`
+- Distractors: lc_mount_0, sfp_mount_0, sc_mount_0, lc_mount_1
+
+**Trial 2 — SFP insertion (different rail + grasp)**
+- Board pose: same as trial 1
+- NIC card on `nic_rail_1` (not rail 0), translation=0.036m, yaw=0°
+- Cable: `sfp_sc_cable`, gripper offset z=**0.04545** (3mm different from trial 1!)
+- Task: SFP tip → `sfp_port_0` on `nic_card_mount_1`
+- Same distractors as trial 1
+
+**Trial 3 — SC insertion**
+- Board pose: x=0.17, y=0.0, z=1.14, yaw=**3.0** (not π!)
+- SC port on `sc_rail_1`, translation=−0.055m, yaw=0°
+- Cable: `sfp_sc_cable_reversed` (SC end grasped), gripper offset z=0.04045
+- Task: SC tip → `sc_port_base` on `sc_port_1`
+- Distractors: sfp_mount_0, sc_mount_2, lc_mount_1
+
+**Robot home joints** (all trials): shoulder_pan=−0.1597, shoulder_lift=−1.3542, elbow=−1.6648, wrist_1=−1.6933, wrist_2=1.5710, wrist_3=1.4110
+
+**Key observations for policy design:**
+- Trial 2 has a **different gripper z-offset** (0.04545 vs 0.04245) — policy must handle ±3mm grasp variation
+- Trial 3 uses a **different board yaw** (3.0 vs π=3.1415) — ~8° rotation difference
+- Trial 3 uses the **reversed cable** — SC end forward, different plug geometry
+- Multiple distractor entities present on the board in all trials
+
 ### Off-limit contact entities
 | Model | Includes |
 |-------|----------|
